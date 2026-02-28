@@ -103,12 +103,27 @@ export default function BlogPage() {
     setShowModal(true);
   };
 
+  const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+  const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
+
   const handleImageChange = (e) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setImageFile(file);
-      setImagePreview(URL.createObjectURL(file));
+    if (!file) return;
+
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      toast.error('Only JPG, PNG, GIF, WebP, and SVG images are allowed');
+      e.target.value = '';
+      return;
     }
+
+    if (file.size > MAX_IMAGE_SIZE) {
+      toast.error(`Image is too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum is 10MB.`);
+      e.target.value = '';
+      return;
+    }
+
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
   };
 
   const toggleTagSelection = (tagId) => {
@@ -569,7 +584,7 @@ export default function BlogPage() {
               <label className="block text-sm font-medium mb-1 dark:text-gray-200">Featured Image</label>
               <input
                 type="file"
-                accept="image/*"
+                accept=".jpg,.jpeg,.png,.gif,.webp,.svg"
                 onChange={handleImageChange}
                 className="w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-[#3498db]/10 file:text-[#3498db] hover:file:bg-[#3498db]/20 dark:text-gray-300"
               />
