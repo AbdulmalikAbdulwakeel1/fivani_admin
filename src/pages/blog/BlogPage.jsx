@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   HiOutlinePlus, HiOutlineTrash, HiOutlinePencil, HiOutlineEye,
-  HiOutlinePhoto, HiOutlineVideoCamera, HiOutlineDocumentText,
+  HiOutlinePhoto, HiOutlineVideoCamera, HiOutlineTag,
 } from 'react-icons/hi2';
 import DataTable from '../../components/common/DataTable';
 import Modal from '../../components/common/Modal';
@@ -10,21 +10,54 @@ import { useApi } from '../../hooks/useApi';
 import { useForm } from 'react-hook-form';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
+
+const quillModules = {
+  toolbar: [
+    [{ header: [1, 2, 3, 4, false] }],
+    ['bold', 'italic', 'underline', 'strike'],
+    [{ color: [] }, { background: [] }],
+    [{ list: 'ordered' }, { list: 'bullet' }],
+    ['blockquote', 'code-block'],
+    ['link', 'image'],
+    [{ align: [] }],
+    ['clean'],
+  ],
+};
 
 export default function BlogPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editPost, setEditPost] = useState(null);
   const [previewPost, setPreviewPost] = useState(null);
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState('');
+  const [contentValue, setContentValue] = useState('');
+
+  // Category management
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [editCategory, setEditCategory] = useState(null);
+  const [categoryName, setCategoryName] = useState('');
+  const [categoryDesc, setCategoryDesc] = useState('');
+  const [categorySubmitting, setCategorySubmitting] = useState(false);
+
+  const { data: categoriesData, refetch: refetchCategories } = useApi('/admin/blog/categories', {}, []);
+  const categories = categoriesData || [];
 
   const { data: listData, loading, refetch } = useApi(
     '/admin/blog',
-    { page, per_page: 15, ...(search ? { search } : {}), ...(statusFilter ? { status: statusFilter } : {}) },
-    [page, search, statusFilter]
+    {
+      page,
+      per_page: 15,
+      ...(search ? { search } : {}),
+      ...(statusFilter ? { status: statusFilter } : {}),
+      ...(categoryFilter ? { category_id: categoryFilter } : {}),
+    },
+    [page, search, statusFilter, categoryFilter]
   );
 
   const posts = listData?.data || [];
@@ -35,7 +68,8 @@ export default function BlogPage() {
 
   const openCreate = () => {
     setEditPost(null);
-    reset({ title: '', content: '', excerpt: '', video_url: '', status: 'draft' });
+    reset({ title: '', excerpt: '', video_url: '', status: 'draft', category_id: '' });
+    setContentValue('');
     setImageFile(null);
     setImagePreview('');
     setShowModal(true);
@@ -44,10 +78,11 @@ export default function BlogPage() {
   const openEdit = (post) => {
     setEditPost(post);
     setValue('title', post.title);
-    setValue('content', post.content);
     setValue('excerpt', post.excerpt || '');
     setValue('video_url', post.video_url || '');
     setValue('status', post.status);
+    setValue('category_id', post.category_id || '');
+    setContentValue(post.content || '');
     setImageFile(null);
     setImagePreview(post.featured_image || '');
     setShowModal(true);
@@ -62,13 +97,18 @@ export default function BlogPage() {
   };
 
   const onSubmit = async (formData) => {
+    if (!contentValue || contentValue === '<p><br></p>') {
+      toast.error('Content is required');
+      return;
+    }
     try {
       const fd = new FormData();
       fd.append('title', formData.title);
-      fd.append('content', formData.content);
+      fd.append('content', contentValue);
       if (formData.excerpt) fd.append('excerpt', formData.excerpt);
       if (formData.video_url) fd.append('video_url', formData.video_url);
       fd.append('status', formData.status);
+      if (formData.category_id) fd.append('category_id', formData.category_id);
       if (imageFile) fd.append('featured_image', imageFile);
 
       if (editPost) {
@@ -86,6 +126,7 @@ export default function BlogPage() {
       setShowModal(false);
       setEditPost(null);
       reset();
+      setContentValue('');
       setImageFile(null);
       setImagePreview('');
       refetch();
@@ -115,6 +156,57 @@ export default function BlogPage() {
     }
   };
 
+  // ── Category CRUD ───────────────────────────────────────────────────
+  const openCreateCategory = () => {
+    setEditCategory(null);
+    setCategoryName('');
+    setCategoryDesc('');
+    setShowCategoryModal(true);
+  };
+
+  const openEditCategory = (cat) => {
+    setEditCategory(cat);
+    setCategoryName(cat.name);
+    setCategoryDesc(cat.description || '');
+    setShowCategoryModal(true);
+  };
+
+  const handleCategorySubmit = async (e) => {
+    e.preventDefault();
+    if (!categoryName.trim()) return toast.error('Category name is required');
+    setCategorySubmitting(true);
+    try {
+      if (editCategory) {
+        await api.put(`/admin/blog/categories/${editCategory.id}`, { name: categoryName, description: categoryDesc });
+        toast.success('Category updated');
+      } else {
+        await api.post('/admin/blog/categories', { name: categoryName, description: categoryDesc });
+        toast.success('Category created');
+      }
+      setShowCategoryModal(false);
+      setEditCategory(null);
+      setCategoryName('');
+      setCategoryDesc('');
+      refetchCategories();
+    } catch (err) {
+      toast.error(err.response?.data?.errors?.name?.[0] || err.response?.data?.message || 'Failed to save category');
+    } finally {
+      setCategorySubmitting(false);
+    }
+  };
+
+  const handleDeleteCategory = async (id) => {
+    if (!confirm('Delete this category? Posts in this category will become uncategorized.')) return;
+    try {
+      await api.delete(`/admin/blog/categories/${id}`);
+      toast.success('Category deleted');
+      refetchCategories();
+      refetch();
+    } catch {
+      toast.error('Failed to delete category');
+    }
+  };
+
   const columns = [
     {
       key: 'featured_image',
@@ -135,6 +227,15 @@ export default function BlogPage() {
           <p className="font-medium text-sm dark:text-white">{val}</p>
           <p className="text-xs text-gray-400">{row.slug}</p>
         </div>
+      ),
+    },
+    {
+      key: 'category',
+      label: 'Category',
+      render: (val) => val ? (
+        <Badge variant="info">{val.name}</Badge>
+      ) : (
+        <span className="text-xs text-gray-400">Uncategorized</span>
       ),
     },
     {
@@ -209,7 +310,17 @@ export default function BlogPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <h1 className="text-2xl font-bold dark:text-white">Blog Posts</h1>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <select
+            value={categoryFilter}
+            onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}
+            className="text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 dark:text-white"
+          >
+            <option value="">All Categories</option>
+            {categories.map((cat) => (
+              <option key={cat.id} value={cat.id}>{cat.name} ({cat.posts_count ?? 0})</option>
+            ))}
+          </select>
           <select
             value={statusFilter}
             onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
@@ -228,6 +339,13 @@ export default function BlogPage() {
               className="pl-4 pr-4 py-2 text-sm bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3498db] dark:text-white"
             />
           </div>
+          <button
+            onClick={openCreateCategory}
+            className="flex items-center gap-2 px-4 py-2 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg text-sm font-medium transition-colors dark:text-white"
+          >
+            <HiOutlineTag className="w-4 h-4" />
+            Categories
+          </button>
           <button
             onClick={openCreate}
             className="flex items-center gap-2 px-4 py-2 bg-[#3498db] hover:bg-[#2980b9] text-white rounded-lg text-sm font-medium transition-colors"
@@ -251,8 +369,8 @@ export default function BlogPage() {
         />
       </div>
 
-      {/* Create/Edit Modal */}
-      <Modal open={showModal} onClose={() => { setShowModal(false); setEditPost(null); reset(); }} title={editPost ? 'Edit Blog Post' : 'New Blog Post'} size="xl">
+      {/* Create/Edit Post Modal */}
+      <Modal open={showModal} onClose={() => { setShowModal(false); setEditPost(null); reset(); setContentValue(''); }} title={editPost ? 'Edit Blog Post' : 'New Blog Post'} size="xl">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div>
             <label className="block text-sm font-medium mb-1 dark:text-gray-200">Title *</label>
@@ -266,13 +384,16 @@ export default function BlogPage() {
 
           <div>
             <label className="block text-sm font-medium mb-1 dark:text-gray-200">Content *</label>
-            <textarea
-              {...register('content', { required: 'Content is required' })}
-              rows={8}
-              className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-[#3498db] dark:text-white resize-y"
-              placeholder="Write your blog content here..."
-            />
-            {errors.content && <p className="text-red-500 text-xs mt-1">{errors.content.message}</p>}
+            <div className="blog-editor">
+              <ReactQuill
+                theme="snow"
+                value={contentValue}
+                onChange={setContentValue}
+                modules={quillModules}
+                placeholder="Write your blog content here..."
+                style={{ minHeight: '200px' }}
+              />
+            </div>
           </div>
 
           <div>
@@ -283,6 +404,32 @@ export default function BlogPage() {
               className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-[#3498db] dark:text-white resize-y"
               placeholder="Short summary of the post (optional)"
             />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1 dark:text-gray-200">Category</label>
+              <select
+                {...register('category_id')}
+                className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-[#3498db] dark:text-white"
+              >
+                <option value="">No Category</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1 dark:text-gray-200">Status</label>
+              <select
+                {...register('status')}
+                className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-[#3498db] dark:text-white"
+              >
+                <option value="draft">Draft</option>
+                <option value="published">Published</option>
+              </select>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -310,21 +457,10 @@ export default function BlogPage() {
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1 dark:text-gray-200">Status</label>
-            <select
-              {...register('status')}
-              className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-[#3498db] dark:text-white"
-            >
-              <option value="draft">Draft</option>
-              <option value="published">Published</option>
-            </select>
-          </div>
-
           <div className="flex gap-3 pt-2">
             <button
               type="button"
-              onClick={() => { setShowModal(false); setEditPost(null); reset(); }}
+              onClick={() => { setShowModal(false); setEditPost(null); reset(); setContentValue(''); }}
               className="flex-1 border border-gray-300 dark:border-gray-700 rounded-lg py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors dark:text-gray-200"
             >
               Cancel
@@ -348,11 +484,14 @@ export default function BlogPage() {
               <img src={previewPost.featured_image} alt={previewPost.title} className="w-full h-64 object-cover rounded-xl" />
             )}
             <h2 className="text-2xl font-bold dark:text-white">{previewPost.title}</h2>
-            <div className="flex items-center gap-3 text-sm text-gray-500">
+            <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500">
               <span>By {previewPost.author?.fullname || 'Admin'}</span>
               <span>&middot;</span>
               <span>{previewPost.published_at?.slice(0, 10) || previewPost.created_at?.slice(0, 10)}</span>
               <Badge variant={previewPost.status === 'published' ? 'success' : 'warning'}>{previewPost.status}</Badge>
+              {previewPost.category && (
+                <Badge variant="info">{previewPost.category.name}</Badge>
+              )}
             </div>
             {previewPost.excerpt && (
               <p className="text-gray-600 dark:text-gray-400 italic">{previewPost.excerpt}</p>
@@ -369,10 +508,87 @@ export default function BlogPage() {
               </div>
             )}
             <div className="prose dark:prose-invert max-w-none">
-              <div className="whitespace-pre-wrap text-sm dark:text-gray-300">{previewPost.content}</div>
+              <div
+                className="text-sm dark:text-gray-300"
+                dangerouslySetInnerHTML={{ __html: previewPost.content }}
+              />
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Category Management Modal */}
+      <Modal open={showCategoryModal} onClose={() => { setShowCategoryModal(false); setEditCategory(null); }} title={editCategory ? 'Edit Category' : 'Manage Categories'} size="lg">
+        <div className="space-y-4">
+          {/* Category form */}
+          <form onSubmit={handleCategorySubmit} className="space-y-3 bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl">
+            <h4 className="text-sm font-medium dark:text-gray-200">{editCategory ? 'Update Category' : 'Add New Category'}</h4>
+            <div>
+              <input
+                value={categoryName}
+                onChange={(e) => setCategoryName(e.target.value)}
+                className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#3498db] dark:text-white"
+                placeholder="Category name"
+              />
+            </div>
+            <div>
+              <input
+                value={categoryDesc}
+                onChange={(e) => setCategoryDesc(e.target.value)}
+                className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#3498db] dark:text-white"
+                placeholder="Description (optional)"
+              />
+            </div>
+            <div className="flex gap-2">
+              {editCategory && (
+                <button
+                  type="button"
+                  onClick={() => { setEditCategory(null); setCategoryName(''); setCategoryDesc(''); }}
+                  className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-gray-200"
+                >
+                  Cancel
+                </button>
+              )}
+              <button
+                type="submit"
+                disabled={categorySubmitting}
+                className="px-4 py-2 bg-[#3498db] hover:bg-[#2980b9] text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                {categorySubmitting ? 'Saving...' : editCategory ? 'Update' : 'Add Category'}
+              </button>
+            </div>
+          </form>
+
+          {/* Category list */}
+          <div className="space-y-2">
+            {categories.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-4">No categories yet</p>
+            ) : (
+              categories.map((cat) => (
+                <div key={cat.id} className="flex items-center justify-between p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
+                  <div>
+                    <p className="text-sm font-medium dark:text-white">{cat.name}</p>
+                    <p className="text-xs text-gray-400">{cat.posts_count ?? 0} posts{cat.description ? ` · ${cat.description}` : ''}</p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => openEditCategory(cat)}
+                      className="p-1.5 text-[#3498db] hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded"
+                    >
+                      <HiOutlinePencil className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteCategory(cat.id)}
+                      className="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded"
+                    >
+                      <HiOutlineTrash className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       </Modal>
     </div>
   );
