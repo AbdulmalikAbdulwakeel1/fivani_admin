@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   HiOutlinePlus, HiOutlineTrash, HiOutlinePencil, HiOutlineEye,
-  HiOutlinePhoto, HiOutlineVideoCamera, HiOutlineTag,
+  HiOutlinePhoto, HiOutlineVideoCamera, HiOutlineTag, HiOutlineClock,
 } from 'react-icons/hi2';
 import DataTable from '../../components/common/DataTable';
 import Modal from '../../components/common/Modal';
@@ -31,12 +31,14 @@ export default function BlogPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [tagFilter, setTagFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editPost, setEditPost] = useState(null);
   const [previewPost, setPreviewPost] = useState(null);
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState('');
   const [contentValue, setContentValue] = useState('');
+  const [selectedTagIds, setSelectedTagIds] = useState([]);
 
   // Category management
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -45,8 +47,17 @@ export default function BlogPage() {
   const [categoryDesc, setCategoryDesc] = useState('');
   const [categorySubmitting, setCategorySubmitting] = useState(false);
 
+  // Tag management
+  const [showTagModal, setShowTagModal] = useState(false);
+  const [editTag, setEditTag] = useState(null);
+  const [tagName, setTagName] = useState('');
+  const [tagSubmitting, setTagSubmitting] = useState(false);
+
   const { data: categoriesData, refetch: refetchCategories } = useApi('/admin/blog/categories', {}, []);
   const categories = categoriesData || [];
+
+  const { data: tagsData, refetch: refetchTags } = useApi('/admin/blog/tags', {}, []);
+  const tags = tagsData || [];
 
   const { data: listData, loading, refetch } = useApi(
     '/admin/blog',
@@ -56,8 +67,9 @@ export default function BlogPage() {
       ...(search ? { search } : {}),
       ...(statusFilter ? { status: statusFilter } : {}),
       ...(categoryFilter ? { category_id: categoryFilter } : {}),
+      ...(tagFilter ? { tag_id: tagFilter } : {}),
     },
-    [page, search, statusFilter, categoryFilter]
+    [page, search, statusFilter, categoryFilter, tagFilter]
   );
 
   const posts = listData?.data || [];
@@ -68,8 +80,9 @@ export default function BlogPage() {
 
   const openCreate = () => {
     setEditPost(null);
-    reset({ title: '', excerpt: '', video_url: '', status: 'draft', category_id: '' });
+    reset({ title: '', excerpt: '', video_url: '', status: 'draft', category_id: '', read_time: '' });
     setContentValue('');
+    setSelectedTagIds([]);
     setImageFile(null);
     setImagePreview('');
     setShowModal(true);
@@ -82,7 +95,9 @@ export default function BlogPage() {
     setValue('video_url', post.video_url || '');
     setValue('status', post.status);
     setValue('category_id', post.category_id || '');
+    setValue('read_time', post.read_time || '');
     setContentValue(post.content || '');
+    setSelectedTagIds(post.tags?.map((t) => t.id) || []);
     setImageFile(null);
     setImagePreview(post.featured_image || '');
     setShowModal(true);
@@ -96,6 +111,12 @@ export default function BlogPage() {
     }
   };
 
+  const toggleTagSelection = (tagId) => {
+    setSelectedTagIds((prev) =>
+      prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]
+    );
+  };
+
   const onSubmit = async (formData) => {
     if (!contentValue || contentValue === '<p><br></p>') {
       toast.error('Content is required');
@@ -107,9 +128,11 @@ export default function BlogPage() {
       fd.append('content', contentValue);
       if (formData.excerpt) fd.append('excerpt', formData.excerpt);
       if (formData.video_url) fd.append('video_url', formData.video_url);
+      if (formData.read_time) fd.append('read_time', formData.read_time);
       fd.append('status', formData.status);
       if (formData.category_id) fd.append('category_id', formData.category_id);
       if (imageFile) fd.append('featured_image', imageFile);
+      selectedTagIds.forEach((id) => fd.append('tag_ids[]', id));
 
       if (editPost) {
         fd.append('_method', 'PUT');
@@ -127,6 +150,7 @@ export default function BlogPage() {
       setEditPost(null);
       reset();
       setContentValue('');
+      setSelectedTagIds([]);
       setImageFile(null);
       setImagePreview('');
       refetch();
@@ -207,6 +231,53 @@ export default function BlogPage() {
     }
   };
 
+  // ── Tag CRUD ────────────────────────────────────────────────────────
+  const openTagManager = () => {
+    setEditTag(null);
+    setTagName('');
+    setShowTagModal(true);
+  };
+
+  const openEditTag = (tag) => {
+    setEditTag(tag);
+    setTagName(tag.name);
+    setShowTagModal(true);
+  };
+
+  const handleTagSubmit = async (e) => {
+    e.preventDefault();
+    if (!tagName.trim()) return toast.error('Tag name is required');
+    setTagSubmitting(true);
+    try {
+      if (editTag) {
+        await api.put(`/admin/blog/tags/${editTag.id}`, { name: tagName });
+        toast.success('Tag updated');
+      } else {
+        await api.post('/admin/blog/tags', { name: tagName });
+        toast.success('Tag created');
+      }
+      setEditTag(null);
+      setTagName('');
+      refetchTags();
+    } catch (err) {
+      toast.error(err.response?.data?.errors?.name?.[0] || err.response?.data?.message || 'Failed to save tag');
+    } finally {
+      setTagSubmitting(false);
+    }
+  };
+
+  const handleDeleteTag = async (id) => {
+    if (!confirm('Delete this tag?')) return;
+    try {
+      await api.delete(`/admin/blog/tags/${id}`);
+      toast.success('Tag deleted');
+      refetchTags();
+      refetch();
+    } catch {
+      toast.error('Failed to delete tag');
+    }
+  };
+
   const columns = [
     {
       key: 'featured_image',
@@ -239,26 +310,33 @@ export default function BlogPage() {
       ),
     },
     {
-      key: 'author',
-      label: 'Author',
-      render: (val) => <span className="text-sm dark:text-gray-200">{val?.fullname || val?.name || '—'}</span>,
+      key: 'tags',
+      label: 'Tags',
+      render: (val) => val?.length ? (
+        <div className="flex flex-wrap gap-1">
+          {val.slice(0, 3).map((t) => (
+            <Badge key={t.id} variant="purple">{t.name}</Badge>
+          ))}
+          {val.length > 3 && <span className="text-xs text-gray-400">+{val.length - 3}</span>}
+        </div>
+      ) : (
+        <span className="text-xs text-gray-400">—</span>
+      ),
+    },
+    {
+      key: 'read_time',
+      label: 'Read',
+      render: (val) => val ? (
+        <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+          <HiOutlineClock className="w-3 h-3" /> {val} min
+        </span>
+      ) : <span className="text-xs text-gray-400">—</span>,
     },
     {
       key: 'status',
       label: 'Status',
       render: (val) => (
         <Badge variant={val === 'published' ? 'success' : 'warning'}>{val}</Badge>
-      ),
-    },
-    {
-      key: 'video_url',
-      label: 'Media',
-      render: (val, row) => (
-        <div className="flex items-center gap-1">
-          {row.featured_image && <HiOutlinePhoto className="w-4 h-4 text-blue-500" title="Has image" />}
-          {val && <HiOutlineVideoCamera className="w-4 h-4 text-purple-500" title="Has video" />}
-          {!row.featured_image && !val && <span className="text-xs text-gray-400">Text only</span>}
-        </div>
       ),
     },
     {
@@ -322,6 +400,16 @@ export default function BlogPage() {
             ))}
           </select>
           <select
+            value={tagFilter}
+            onChange={(e) => { setTagFilter(e.target.value); setPage(1); }}
+            className="text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 dark:text-white"
+          >
+            <option value="">All Tags</option>
+            {tags.map((tag) => (
+              <option key={tag.id} value={tag.id}>{tag.name} ({tag.posts_count ?? 0})</option>
+            ))}
+          </select>
+          <select
             value={statusFilter}
             onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
             className="text-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 dark:text-white"
@@ -330,21 +418,28 @@ export default function BlogPage() {
             <option value="draft">Draft</option>
             <option value="published">Published</option>
           </select>
-          <div className="relative">
-            <input
-              type="text"
-              placeholder="Search posts..."
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-              className="pl-4 pr-4 py-2 text-sm bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3498db] dark:text-white"
-            />
-          </div>
+          <input
+            type="text"
+            placeholder="Search posts..."
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            className="pl-4 pr-4 py-2 text-sm bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3498db] dark:text-white"
+          />
           <button
             onClick={openCreateCategory}
-            className="flex items-center gap-2 px-4 py-2 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg text-sm font-medium transition-colors dark:text-white"
+            className="flex items-center gap-2 px-3 py-2 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg text-sm font-medium transition-colors dark:text-white"
+            title="Manage Categories"
           >
             <HiOutlineTag className="w-4 h-4" />
             Categories
+          </button>
+          <button
+            onClick={openTagManager}
+            className="flex items-center gap-2 px-3 py-2 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg text-sm font-medium transition-colors dark:text-white"
+            title="Manage Tags"
+          >
+            <HiOutlineTag className="w-4 h-4" />
+            Tags
           </button>
           <button
             onClick={openCreate}
@@ -370,7 +465,7 @@ export default function BlogPage() {
       </div>
 
       {/* Create/Edit Post Modal */}
-      <Modal open={showModal} onClose={() => { setShowModal(false); setEditPost(null); reset(); setContentValue(''); }} title={editPost ? 'Edit Blog Post' : 'New Blog Post'} size="xl">
+      <Modal open={showModal} onClose={() => { setShowModal(false); setEditPost(null); reset(); setContentValue(''); setSelectedTagIds([]); }} title={editPost ? 'Edit Blog Post' : 'New Blog Post'} size="xl">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div>
             <label className="block text-sm font-medium mb-1 dark:text-gray-200">Title *</label>
@@ -406,7 +501,7 @@ export default function BlogPage() {
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1 dark:text-gray-200">Category</label>
               <select
@@ -430,6 +525,43 @@ export default function BlogPage() {
                 <option value="published">Published</option>
               </select>
             </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1 dark:text-gray-200">Read Time (min)</label>
+              <input
+                {...register('read_time')}
+                type="number"
+                min="1"
+                max="999"
+                className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-[#3498db] dark:text-white"
+                placeholder="Auto-calculated if empty"
+              />
+            </div>
+          </div>
+
+          {/* Tags selection */}
+          <div>
+            <label className="block text-sm font-medium mb-1 dark:text-gray-200">Tags</label>
+            {tags.length === 0 ? (
+              <p className="text-xs text-gray-400">No tags created yet. Use the Tags button to create some.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {tags.map((tag) => (
+                  <button
+                    key={tag.id}
+                    type="button"
+                    onClick={() => toggleTagSelection(tag.id)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors border ${
+                      selectedTagIds.includes(tag.id)
+                        ? 'bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-900/40 dark:text-purple-300 dark:border-purple-700'
+                        : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-700 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    {tag.name}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -460,7 +592,7 @@ export default function BlogPage() {
           <div className="flex gap-3 pt-2">
             <button
               type="button"
-              onClick={() => { setShowModal(false); setEditPost(null); reset(); setContentValue(''); }}
+              onClick={() => { setShowModal(false); setEditPost(null); reset(); setContentValue(''); setSelectedTagIds([]); }}
               className="flex-1 border border-gray-300 dark:border-gray-700 rounded-lg py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors dark:text-gray-200"
             >
               Cancel
@@ -488,11 +620,21 @@ export default function BlogPage() {
               <span>By {previewPost.author?.fullname || 'Admin'}</span>
               <span>&middot;</span>
               <span>{previewPost.published_at?.slice(0, 10) || previewPost.created_at?.slice(0, 10)}</span>
+              {previewPost.read_time && (
+                <span className="flex items-center gap-1"><HiOutlineClock className="w-3.5 h-3.5" /> {previewPost.read_time} min read</span>
+              )}
               <Badge variant={previewPost.status === 'published' ? 'success' : 'warning'}>{previewPost.status}</Badge>
               {previewPost.category && (
                 <Badge variant="info">{previewPost.category.name}</Badge>
               )}
             </div>
+            {previewPost.tags?.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {previewPost.tags.map((t) => (
+                  <Badge key={t.id} variant="purple">{t.name}</Badge>
+                ))}
+              </div>
+            )}
             {previewPost.excerpt && (
               <p className="text-gray-600 dark:text-gray-400 italic">{previewPost.excerpt}</p>
             )}
@@ -520,7 +662,6 @@ export default function BlogPage() {
       {/* Category Management Modal */}
       <Modal open={showCategoryModal} onClose={() => { setShowCategoryModal(false); setEditCategory(null); }} title={editCategory ? 'Edit Category' : 'Manage Categories'} size="lg">
         <div className="space-y-4">
-          {/* Category form */}
           <form onSubmit={handleCategorySubmit} className="space-y-3 bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl">
             <h4 className="text-sm font-medium dark:text-gray-200">{editCategory ? 'Update Category' : 'Add New Category'}</h4>
             <div>
@@ -559,7 +700,6 @@ export default function BlogPage() {
             </div>
           </form>
 
-          {/* Category list */}
           <div className="space-y-2">
             {categories.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-4">No categories yet</p>
@@ -571,16 +711,68 @@ export default function BlogPage() {
                     <p className="text-xs text-gray-400">{cat.posts_count ?? 0} posts{cat.description ? ` · ${cat.description}` : ''}</p>
                   </div>
                   <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => openEditCategory(cat)}
-                      className="p-1.5 text-[#3498db] hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded"
-                    >
+                    <button onClick={() => openEditCategory(cat)} className="p-1.5 text-[#3498db] hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded">
                       <HiOutlinePencil className="w-4 h-4" />
                     </button>
-                    <button
-                      onClick={() => handleDeleteCategory(cat.id)}
-                      className="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded"
-                    >
+                    <button onClick={() => handleDeleteCategory(cat.id)} className="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded">
+                      <HiOutlineTrash className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </Modal>
+
+      {/* Tag Management Modal */}
+      <Modal open={showTagModal} onClose={() => { setShowTagModal(false); setEditTag(null); setTagName(''); }} title={editTag ? 'Edit Tag' : 'Manage Tags'} size="lg">
+        <div className="space-y-4">
+          <form onSubmit={handleTagSubmit} className="space-y-3 bg-gray-50 dark:bg-gray-800/50 p-4 rounded-xl">
+            <h4 className="text-sm font-medium dark:text-gray-200">{editTag ? 'Update Tag' : 'Add New Tag'}</h4>
+            <div>
+              <input
+                value={tagName}
+                onChange={(e) => setTagName(e.target.value)}
+                className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#3498db] dark:text-white"
+                placeholder="Tag name"
+              />
+            </div>
+            <div className="flex gap-2">
+              {editTag && (
+                <button
+                  type="button"
+                  onClick={() => { setEditTag(null); setTagName(''); }}
+                  className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-gray-200"
+                >
+                  Cancel
+                </button>
+              )}
+              <button
+                type="submit"
+                disabled={tagSubmitting}
+                className="px-4 py-2 bg-[#3498db] hover:bg-[#2980b9] text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                {tagSubmitting ? 'Saving...' : editTag ? 'Update' : 'Add Tag'}
+              </button>
+            </div>
+          </form>
+
+          <div className="space-y-2">
+            {tags.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-4">No tags yet</p>
+            ) : (
+              tags.map((tag) => (
+                <div key={tag.id} className="flex items-center justify-between p-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg">
+                  <div>
+                    <p className="text-sm font-medium dark:text-white">{tag.name}</p>
+                    <p className="text-xs text-gray-400">{tag.posts_count ?? 0} posts</p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => openEditTag(tag)} className="p-1.5 text-[#3498db] hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded">
+                      <HiOutlinePencil className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => handleDeleteTag(tag.id)} className="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded">
                       <HiOutlineTrash className="w-4 h-4" />
                     </button>
                   </div>
