@@ -1,4 +1,20 @@
-import { HiChevronLeft, HiChevronRight } from 'react-icons/hi2';
+import { HiChevronLeft, HiChevronRight, HiChevronDoubleLeft, HiChevronDoubleRight } from 'react-icons/hi2';
+
+function getPageNumbers(page, totalPages) {
+  const pages = [];
+  if (totalPages <= 7) {
+    for (let i = 1; i <= totalPages; i++) pages.push(i);
+    return pages;
+  }
+  pages.push(1);
+  if (page > 3) pages.push('...');
+  const start = Math.max(2, page - 1);
+  const end = Math.min(totalPages - 1, page + 1);
+  for (let i = start; i <= end; i++) pages.push(i);
+  if (page < totalPages - 2) pages.push('...');
+  pages.push(totalPages);
+  return pages;
+}
 
 export default function DataTable({
   columns,
@@ -10,6 +26,7 @@ export default function DataTable({
   onPageChange,
   onRowClick,
   emptyMessage = 'No data found',
+  perPage = 15,
 }) {
   if (loading) {
     return (
@@ -37,6 +54,9 @@ export default function DataTable({
       </div>
     );
   }
+
+  const from = total > 0 ? (page - 1) * perPage + 1 : 0;
+  const to = Math.min(page * perPage, total);
 
   return (
     <div className="overflow-hidden">
@@ -82,24 +102,61 @@ export default function DataTable({
       </div>
 
       {totalPages > 1 && (
-        <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-800">
+        <div className="flex flex-col sm:flex-row items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-800 gap-3">
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Page {page} of {totalPages} &middot; {total} total
+            Showing {from}–{to} of {total}
           </p>
-          <div className="flex gap-1">
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => onPageChange?.(1)}
+              disabled={page <= 1}
+              className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed"
+              title="First page"
+            >
+              <HiChevronDoubleLeft className="w-4 h-4" />
+            </button>
             <button
               onClick={() => onPageChange?.(page - 1)}
               disabled={page <= 1}
-              className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30"
+              className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Previous page"
             >
-              <HiChevronLeft className="w-5 h-5" />
+              <HiChevronLeft className="w-4 h-4" />
             </button>
+
+            {getPageNumbers(page, totalPages).map((p, i) =>
+              p === '...' ? (
+                <span key={`dots-${i}`} className="px-1 text-gray-400 text-sm select-none">...</span>
+              ) : (
+                <button
+                  key={p}
+                  onClick={() => onPageChange?.(p)}
+                  className={`min-w-[32px] h-8 rounded-lg text-sm font-medium transition-colors ${
+                    p === page
+                      ? 'bg-[#3498db] text-white'
+                      : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                  }`}
+                >
+                  {p}
+                </button>
+              )
+            )}
+
             <button
               onClick={() => onPageChange?.(page + 1)}
               disabled={page >= totalPages}
-              className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30"
+              className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Next page"
             >
-              <HiChevronRight className="w-5 h-5" />
+              <HiChevronRight className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => onPageChange?.(totalPages)}
+              disabled={page >= totalPages}
+              className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Last page"
+            >
+              <HiChevronDoubleRight className="w-4 h-4" />
             </button>
           </div>
         </div>

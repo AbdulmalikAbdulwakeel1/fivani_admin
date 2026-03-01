@@ -69,13 +69,13 @@ export default function SubscriptionsPage() {
         { key: 'created_at', label: 'Created', render: (v) => v?.slice(0, 10) },
     ];
 
-    const filtered = search ? subs.filter(s => s.user?.name?.toLowerCase().includes(search.toLowerCase()) || s.user?.email?.toLowerCase().includes(search.toLowerCase())) : subs;
+    const filtered = subs;
 
     return (
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <h1 className="text-2xl font-bold dark:text-white">Subscriptions</h1>
-                <FilterBar search={search} onSearchChange={setSearch} />
+                <FilterBar search={search} onSearchChange={(v) => { setSearch(v); setPage(1); }} />
             </div>
 
             {/* Stats */}

@@ -84,7 +84,7 @@ export default function AnalysisPage() {
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <h1 className="text-2xl font-bold dark:text-white">Analysis</h1>
-                <FilterBar filter={filter} onFilterChange={setFilter} search={search} onSearchChange={setSearch} />
+                <FilterBar filter={filter} onFilterChange={setFilter} search={search} onSearchChange={(v) => { setSearch(v); setPage(1); }} />
             </div>
 
             {/* Overview */}

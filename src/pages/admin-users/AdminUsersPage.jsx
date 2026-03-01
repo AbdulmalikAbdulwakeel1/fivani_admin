@@ -16,7 +16,7 @@ export default function AdminUsersPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editUser, setEditUser] = useState(null);
 
-  const { data: adminData, loading, refetch } = useApi('/admin/admin-users', { filter }, [filter, page]);
+  const { data: adminData, loading, refetch } = useApi('/admin/admin-users', { filter, page, per_page: 10, ...(search ? { search } : {}) }, [filter, page, search]);
   const { data: userTypes } = useApi('/admin/user-types', {}, []);
 
   const admins = adminData?.data?.data || [];
@@ -125,13 +125,7 @@ export default function AdminUsersPage() {
     },
   ];
 
-  const filtered = search
-    ? admins.filter(
-      (u) =>
-        u.fullname?.toLowerCase().includes(search.toLowerCase()) ||
-        u.email?.toLowerCase().includes(search.toLowerCase())
-    )
-    : admins;
+  const filtered = admins;
 
   const typeOptions = userTypes?.data || [];
 
@@ -140,7 +134,7 @@ export default function AdminUsersPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <h1 className="text-2xl font-bold dark:text-white">Admin Users</h1>
         <div className="flex items-center gap-3">
-          <FilterBar filter={filter} onFilterChange={setFilter} search={search} onSearchChange={setSearch} />
+          <FilterBar filter={filter} onFilterChange={setFilter} search={search} onSearchChange={(v) => { setSearch(v); setPage(1); }} />
           <button
             onClick={() => { setShowCreate(true); createForm.reset(); }}
             className="flex items-center gap-2 px-4 py-2 bg-[#3498db] hover:bg-[#2980b9] text-white rounded-lg text-sm font-medium transition-colors"

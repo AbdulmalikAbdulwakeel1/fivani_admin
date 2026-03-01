@@ -32,8 +32,8 @@ export default function ProjectsPage() {
     const { data: cvData } = useApi('/admin/projects/completed-vs-active', { filter }, [filter]);
     const { data: listData, loading: listLoading, refetch } = useApi(
         '/admin/projects/list',
-        { filter, page, ...(statusFilter ? { status: statusFilter } : {}) },
-        [filter, page, statusFilter]
+        { filter, page, ...(statusFilter ? { status: statusFilter } : {}), ...(search ? { search } : {}) },
+        [filter, page, statusFilter, search]
     );
 
     const projects = listData?.data || [];
@@ -99,15 +99,13 @@ export default function ProjectsPage() {
         },
     ];
 
-    const filtered = search
-        ? projects.filter((p) => p.project_name?.toLowerCase().includes(search.toLowerCase()))
-        : projects;
+    const filtered = projects;
 
     return (
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <h1 className="text-2xl font-bold dark:text-white">Projects</h1>
-                <FilterBar filter={filter} onFilterChange={setFilter} search={search} onSearchChange={setSearch} />
+                <FilterBar filter={filter} onFilterChange={setFilter} search={search} onSearchChange={(v) => { setSearch(v); setPage(1); }} />
             </div>
 
             {/* Stats */}

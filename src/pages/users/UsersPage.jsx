@@ -25,11 +25,10 @@ export default function UsersPage() {
 
   const { data: stats, loading: statsLoading } = useApi('/admin/dashboard/users-count', { filter }, [filter]);
 
-  // Don't send month param so all users show - let pagination handle it
   const { data: usersData, loading: usersLoading, refetch } = useApi(
     '/admin/users',
-    { page, per_page: perPage },
-    [page]
+    { page, per_page: perPage, ...(search ? { search } : {}) },
+    [page, search]
   );
 
   const users = usersData?.data || [];
@@ -81,20 +80,13 @@ export default function UsersPage() {
     },
   ];
 
-  // Client-side search filtering
-  const filtered = search
-    ? users.filter(
-      (u) =>
-        u.fullname?.toLowerCase().includes(search.toLowerCase()) ||
-        u.email?.toLowerCase().includes(search.toLowerCase())
-    )
-    : users;
+  const filtered = users;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <h1 className="text-2xl font-bold dark:text-white">Users ({total})</h1>
-        <FilterBar filter={filter} onFilterChange={setFilter} search={search} onSearchChange={(v) => { setSearch(v); }} />
+        <FilterBar filter={filter} onFilterChange={setFilter} search={search} onSearchChange={(v) => { setSearch(v); setPage(1); }} />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

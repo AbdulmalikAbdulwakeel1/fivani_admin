@@ -39,7 +39,7 @@ export default function ContractsPage() {
     const { data: jurisdictionData } = useApi('/admin/contracts/by-jurisdiction', { filter }, [filter]);
     const { data: clauseData } = useApi('/admin/contracts/clause-trends', { filter }, [filter]);
     const { data: funnelData } = useApi('/admin/contracts/conversion-funnel', { month }, [month]);
-    const { data: listData, loading: listLoading } = useApi('/admin/contracts/list', { filter, page }, [filter, page]);
+    const { data: listData, loading: listLoading } = useApi('/admin/contracts/list', { filter, page, ...(search ? { search } : {}) }, [filter, page, search]);
 
     const contracts = listData?.data || [];
     const totalPages = listData?.meta?.last_page || 1;
@@ -97,9 +97,7 @@ export default function ContractsPage() {
         },
     ];
 
-    const filtered = search
-        ? contracts.filter((c) => c.contract_id?.toLowerCase().includes(search.toLowerCase()) || c.client?.name?.toLowerCase().includes(search.toLowerCase()))
-        : contracts;
+    const filtered = contracts;
 
     const jurisdictions = jurisdictionData?.contracts_by_jurisdiction || [];
     const clauses = clauseData?.clause_usage_trends || [];
@@ -109,7 +107,7 @@ export default function ContractsPage() {
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <h1 className="text-2xl font-bold dark:text-white">Contracts</h1>
-                <FilterBar filter={filter} onFilterChange={setFilter} search={search} onSearchChange={setSearch} />
+                <FilterBar filter={filter} onFilterChange={setFilter} search={search} onSearchChange={(v) => { setSearch(v); setPage(1); }} />
             </div>
 
             {/* Stats */}
